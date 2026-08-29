@@ -1,0 +1,121 @@
+{
+  "source": "https://unpkg.com",
+  "integrity": "sha256-per-file",
+  "packages": {
+    "@esbuild/win32-x64": {
+      "version": "0.25.9",
+      "files": 3,
+      "manifestIntegrity": "sha256-govmV6jwRfHyFqQz9tAh4sfcEj3pu5RPlQbgEe3R3QU="
+    },
+    "@rollup/rollup-win32-x64-gnu": {
+      "version": "4.62.4",
+      "files": 3,
+      "manifestIntegrity": "sha256-51L+We1tZ8hzTRR7D64vtZ+nQS4rx2xNBbVeX0MY72E="
+    },
+    "@rollup/rollup-win32-x64-msvc": {
+      "version": "4.62.4",
+      "files": 3,
+      "manifestIntegrity": "sha256-0bWupPN1RF6DQwDL8vxfWlhPHs50aK3TRnJqEomtmLg="
+    },
+    "@types/estree": {
+      "version": "1.0.9",
+      "files": 5,
+      "manifestIntegrity": "sha256-NTempQP1eQERHYop34GWKIdlPesZm5p5XH+1C7/dG9w="
+    },
+    "@types/node": {
+      "version": "22.15.32",
+      "files": 67,
+      "manifestIntegrity": "sha256-r6zHlGYUhrlmL5P3rXFNCcMTKSrS+KRn/pOeLZcPD00="
+    },
+    "@types/react": {
+      "version": "19.1.10",
+      "files": 24,
+      "manifestIntegrity": "sha256-OFkQ38ZcUnco2TPggA6zxaUPbcXqHC6lClDmoPd+nwY="
+    },
+    "@types/react-dom": {
+      "version": "19.1.7",
+      "files": 17,
+      "manifestIntegrity": "sha256-vuP72QgohpT9oAynI1AIC7YnJ+KNjdh6v2Uwttu+UIU="
+    },
+    "csstype": {
+      "version": "3.2.3",
+      "files": 5,
+      "manifestIntegrity": "sha256-yBi3SpvBVWSIt+wqZTmSJHOPZhkij5pkkcXALKkfhJ4="
+    },
+    "esbuild": {
+      "version": "0.25.9",
+      "files": 7,
+      "manifestIntegrity": "sha256-1r+bzFr0rLjhL2zhFG7hBRw4ipqmBdvMAlnFmElYE5Y="
+    },
+    "fdir": {
+      "version": "6.5.0",
+      "files": 7,
+      "manifestIntegrity": "sha256-rKSTldYe84Ogn3RVXGbtRYF8orVyTnEKTcngRxuD2PU="
+    },
+    "nanoid": {
+      "version": "3.3.18",
+      "files": 25,
+      "manifestIntegrity": "sha256-GGc+sNftQ92HHVncIqVnAwP11OubF3g7H2mPWEDOH/8="
+    },
+    "picocolors": {
+      "version": "1.1.1",
+      "files": 7,
+      "manifestIntegrity": "sha256-7yrCJsSBHTEuEsZCFMRTh4ZT6DRIISWuR18nzqYN5zc="
+    },
+    "picomatch": {
+      "version": "4.0.5",
+      "files": 10,
+      "manifestIntegrity": "sha256-+3dm9fnHJOE+B1dgqV0W+HzbMnFD0VOpExNf3iZ+xhU="
+    },
+    "postcss": {
+      "version": "8.5.26",
+      "files": 55,
+      "manifestIntegrity": "sha256-4PI1GNDo/AVwrGhDjv9+zHVUd03jGUr29U9QLjPwwls="
+    },
+    "react": {
+      "version": "19.1.1",
+      "files": 27,
+      "manifestIntegrity": "sha256-foYrQ3BY+N3g/htTgma5NNcl92/luYEwXW6UJxTUlgg="
+    },
+    "react-dom": {
+      "version": "19.1.1",
+      "files": 43,
+      "manifestIntegrity": "sha256-GhhWoCAy1yHGreod8hdFBXOfKbt6CTgUaIxL2x4DkOA="
+    },
+    "rollup": {
+      "version": "4.62.4",
+      "files": 27,
+      "manifestIntegrity": "sha256-M8wqFUhaMQSTTzQiivMnWcb5NcbpigbzywgWUZzETbY="
+    },
+    "scheduler": {
+      "version": "0.26.0",
+      "files": 15,
+      "manifestIntegrity": "sha256-wNGw5WN0mEZY1jqTN4HH16Eqb8fejsex5uLk1CA9b1s="
+    },
+    "source-map-js": {
+      "version": "1.2.1",
+      "files": 18,
+      "manifestIntegrity": "sha256-WPjpSkYaXkYeDLK7K+aBy9ibkYGYn9JvzrhY5ncRRpo="
+    },
+    "tinyglobby": {
+      "version": "0.2.17",
+      "files": 7,
+      "manifestIntegrity": "sha256-vSsq88m6BYDxrPsixV0LbSmr9oOvXKyKLv6C+nyUPyM="
+    },
+    "typescript": {
+      "version": "5.8.3",
+      "files": 130,
+      "manifestIntegrity": "sha256-67DOF2yFrBPOgvW+fm8VEUcyug8GTMyJP9kFFCbTXTo="
+    },
+    "undici-types": {
+      "version": "6.21.0",
+      "files": 41,
+      "manifestIntegrity": "sha256-EfhztCO5alrURKCZaFymud4TedzYP9jTaOdX3bU2WOQ="
+    },
+    "vite": {
+      "version": "7.3.6",
+      "files": 39,
+      "manifestIntegrity": "sha256-5e0PhSFfhx/iKkiYfc13/PvhQGSlPAyff0gYamt+LPA="
+    }
+  }
+}

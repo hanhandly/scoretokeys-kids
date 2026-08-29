@@ -1,0 +1,565 @@
+import type { MeasureModel, ScoreEvent, SongModel } from "../types";
+import { recommendFingering } from "../core/arrangement";
+import { degreeToMidi, pitchNameToMidi } from "../core/theory";
+
+type EventSpec = readonly [
+  pitch: string | number | null,
+  duration: number,
+  lyric?: string,
+  confidence?: number,
+];
+
+function makeMeasure(
+  songId: string,
+  number: number,
+  durationBeats: number,
+  specs: readonly EventSpec[],
+  chordHint?: string,
+  phraseEnd = false,
+): MeasureModel {
+  let offsetBeats = 0;
+  const events: ScoreEvent[] = specs.map(([pitch, duration, lyric, confidence], index) => {
+    const event: ScoreEvent = {
+      id: `${songId}-m${number}-n${index + 1}`,
+      offsetBeats,
+      durationBeats: duration,
+      midi:
+        pitch === null ? null : typeof pitch === "number" ? pitch : pitchNameToMidi(pitch),
+      lyric,
+      confidence: confidence ?? 0.94,
+    };
+    offsetBeats += duration;
+    return event;
+  });
+
+  return {
+    id: `${songId}-m${number}`,
+    number,
+    durationBeats,
+    events,
+    chordHint,
+    phraseEnd,
+  };
+}
+
+const happyId = "happy";
+const happyMeasures = [
+  makeMeasure(happyId, 0, 1, [
+    ["C4", 0.5, "If"],
+    ["C4", 0.5, "you're"],
+  ]),
+  makeMeasure(
+    happyId,
+    1,
+    4,
+    [
+      ["F4", 0.5, "hap"],
+      ["F4", 0.5, "py"],
+      ["F4", 0.5, "and"],
+      ["F4", 0.5, "you"],
+      ["F4", 0.5, "know"],
+      ["F4", 0.5, "it"],
+      ["E4", 0.5, "clap"],
+      ["F4", 0.5, "your"],
+    ],
+    "F",
+  ),
+  makeMeasure(
+    happyId,
+    2,
+    4,
+    [
+      ["G4", 3, "hands"],
+      ["C4", 0.5, "If"],
+      ["C4", 0.5, "you're"],
+    ],
+    "C",
+    true,
+  ),
+  makeMeasure(
+    happyId,
+    3,
+    4,
+    [
+      ["G4", 0.5, "hap"],
+      ["G4", 0.5, "py"],
+      ["G4", 0.5, "and"],
+      ["G4", 0.5, "you"],
+      ["G4", 0.5, "know"],
+      ["G4", 0.5, "it"],
+      ["F4", 0.5, "clap"],
+      ["G4", 0.5, "your"],
+    ],
+    "F",
+  ),
+  makeMeasure(
+    happyId,
+    4,
+    4,
+    [
+      ["A4", 3, "hands"],
+      ["A4", 0.5, "If"],
+      ["A4", 0.5, "you're"],
+    ],
+    "F",
+    true,
+  ),
+  makeMeasure(
+    happyId,
+    5,
+    4,
+    [
+      ["Bb4", 0.5, "hap"],
+      ["Bb4", 0.5, "py"],
+      ["Bb4", 0.5, "and"],
+      ["Bb4", 0.5, "you"],
+      ["D4", 0.5, "know"],
+      ["D4", 0.5, "it"],
+      ["Bb4", 0.5, "and"],
+      ["Bb4", 0.5, "you"],
+    ],
+    "Bb",
+  ),
+  makeMeasure(
+    happyId,
+    6,
+    4,
+    [
+      ["A4", 0.5, "real"],
+      ["A4", 0.5, "ly"],
+      ["A4", 0.5, "want"],
+      ["G4", 0.5, "to"],
+      ["F4", 0.5, "show"],
+      ["F4", 0.5, "it"],
+      ["A4", 0.5, "If"],
+      ["A4", 0.5, "you're"],
+    ],
+    "F",
+  ),
+  makeMeasure(
+    happyId,
+    7,
+    4,
+    [
+      ["G4", 0.5, "hap"],
+      ["G4", 0.5, "py"],
+      ["G4", 0.5, "and"],
+      ["F4", 0.5, "you"],
+      ["E4", 0.5, "know"],
+      ["E4", 0.5, "it"],
+      ["D4", 0.5, "clap"],
+      ["E4", 0.5, "your"],
+    ],
+    "C",
+  ),
+  makeMeasure(
+    happyId,
+    8,
+    4,
+    [
+      ["F4", 3, "hands"],
+      [null, 1],
+    ],
+    "F",
+    true,
+  ),
+];
+
+const happySong: SongModel = {
+  id: happyId,
+  title: "If You're Happy And You Know It",
+  subtitle: "Traditional · 图片识别校对样例",
+  key: "F",
+  tonicMidi: pitchNameToMidi("F4"),
+  timeSignature: { beats: 4, beatType: 4 },
+  tempo: 92,
+  suggestedTempo: "♩ = 92 · 活泼地",
+  measures: happyMeasures,
+  source: {
+    imagePath: "/If-Youre-Happy-And-You-Know-It.jpeg",
+    notation: "staff",
+    overallConfidence: 0.96,
+    coverage: "完整旋律，8 小节 + 弱起",
+    attribution: "Traditional melody · 本地测试图片",
+    recognizer: "开发期人工校对 fixture",
+    verificationStatus: "development-fixture",
+    notes: [
+      "调号识别为 F 大调，拍号 4/4。",
+      "已按原谱低音区逐音复核，不再使用首版高八度近似旋律。",
+      "第 5 小节 “know it” 的两个 D 音按原图记为 D4，不再按其他传统版本升高八度。",
+    ],
+  },
+};
+
+const laborId = "labor";
+const laborTonic = pitchNameToMidi("Bb3");
+const j = (
+  degree: string | null,
+  duration: number,
+  lyric?: string,
+  confidence = 0.9,
+): EventSpec =>
+  [degree === null ? null : degreeToMidi(degree, laborTonic), duration, lyric, confidence];
+
+const laborMeasures = [
+  makeMeasure(
+    laborId,
+    1,
+    2,
+    [j("5", 0.5, "太"), j("1'", 0.5, "阳"), j("1'", 0.5), j("5", 0.5, "光")],
+    "Bb",
+  ),
+  makeMeasure(
+    laborId,
+    2,
+    2,
+    [j("6", 0.5, "金"), j("6", 0.5, "亮"), j("5", 1, "亮")],
+    "F",
+  ),
+  makeMeasure(
+    laborId,
+    3,
+    2,
+    [
+      j("3", 0.25, "雄", 0.82),
+      j("4", 0.25, "鸡", 0.82),
+      j("5", 0.25, "唱"),
+      j("6", 0.25, "三"),
+      j("1'", 0.5),
+      j("3'", 0.5, "唱", 0.82),
+    ],
+    "Bb",
+  ),
+  makeMeasure(laborId, 4, 2, [j("2'", 2, "唱")], "F", true),
+  makeMeasure(
+    laborId,
+    5,
+    2,
+    [j("5", 0.5, "花"), j("1'", 0.5, "儿"), j("5", 1)],
+    "Bb",
+  ),
+  makeMeasure(
+    laborId,
+    6,
+    2,
+    [j("6", 0.5, "醒"), j("6", 0.5, "来"), j("5", 1, "了")],
+    "F",
+  ),
+  makeMeasure(
+    laborId,
+    7,
+    2,
+    [
+      j("5", 0.25, "鸟"),
+      j("6", 0.25, "儿"),
+      j("1'", 0.25, "忙"),
+      j("3'", 0.25, "梳"),
+      j("2'", 0.5),
+      j("5", 0.5, "妆", 0.8),
+    ],
+    "F",
+  ),
+  makeMeasure(laborId, 8, 2, [j("1'", 2, "妆")], "Bb", true),
+  makeMeasure(
+    laborId,
+    9,
+    2,
+    [
+      j("1'", 0.75, "小"),
+      j("2'", 0.25, "喜"),
+      j("1'", 0.5, "鹊"),
+      j("5", 0.5),
+    ],
+    "Bb",
+  ),
+  makeMeasure(
+    laborId,
+    10,
+    2,
+    [j("6", 0.5, "造"), j("6", 0.5, "新"), j("5", 1, "房")],
+    "F",
+  ),
+  makeMeasure(
+    laborId,
+    11,
+    2,
+    [
+      j("3'", 0.75, "小"),
+      j("1'", 0.25, "蜜"),
+      j("6", 0.5, "蜂"),
+      j("5", 0.5),
+    ],
+    "Eb",
+  ),
+  makeMeasure(
+    laborId,
+    12,
+    2,
+    [j("1", 0.5, "采"), j("3", 0.5, "蜜"), j("2", 1, "忙")],
+    "Bb",
+  ),
+  makeMeasure(
+    laborId,
+    13,
+    2,
+    [
+      j("1", 0.25, "幸"),
+      j("1", 0.25, "福"),
+      j("2", 0.25, "的"),
+      j("3", 0.25, "生"),
+      j("5", 0.5, "活"),
+      j("5", 0.5, "从"),
+    ],
+    "Bb",
+  ),
+  makeMeasure(
+    laborId,
+    14,
+    2,
+    [j("6", 0.5, "哪"), j("5", 0.5, "里"), j("1'", 1, "来")],
+    "F",
+  ),
+  makeMeasure(
+    laborId,
+    15,
+    2,
+    [
+      j("1'", 0.75, "要"),
+      j("5", 0.25, "靠"),
+      j("6", 0.5, "劳"),
+      j("1'", 0.5),
+    ],
+    "Bb",
+  ),
+  makeMeasure(
+    laborId,
+    16,
+    2,
+    [j("3'", 0.75, "动"), j("2'", 0.25, "来"), j("5", 1, "创")],
+    "F",
+  ),
+  makeMeasure(
+    laborId,
+    17,
+    2,
+    [j("1'", 1, "造"), j(null, 1)],
+    "Bb",
+    true,
+  ),
+  makeMeasure(
+    laborId,
+    18,
+    2,
+    [
+      j("5", 0.5, "青", 0.78),
+      j("1'", 0.25, "青", 0.78),
+      j("1'", 0.25, "的", 0.78),
+      j("1'", 0.5, "叶"),
+      j("5", 0.5, "儿"),
+    ],
+    "Bb",
+  ),
+  makeMeasure(
+    laborId,
+    19,
+    2,
+    [
+      j("6", 0.5, "红"),
+      j("6", 0.5, "红"),
+      j("1'", 0.5, "的"),
+      j("5", 0.5, "花"),
+    ],
+    "F",
+  ),
+  makeMeasure(
+    laborId,
+    20,
+    2,
+    [
+      j("3", 0.25, "小"),
+      j("4", 0.25, "蝴"),
+      j("5", 0.25, "蝶"),
+      j("6", 0.25),
+      j("5'", 0.75, undefined, 0.78),
+      j("3'", 0.25, undefined, 0.78),
+    ],
+    "Bb",
+    true,
+  ),
+  makeMeasure(
+    laborId,
+    21,
+    2,
+    [j("1", 0.5, "贪"), j("3", 0.5, "玩"), j("2", 1, "耍")],
+    "Bb",
+  ),
+  makeMeasure(
+    laborId,
+    22,
+    2,
+    [
+      j("5", 0.5, "不"),
+      j("1'", 0.5, "爱"),
+      j("1'", 0.5, "劳"),
+      j("5", 0.5, "动"),
+    ],
+    "Bb",
+  ),
+  makeMeasure(
+    laborId,
+    23,
+    2,
+    [j("6", 0.5, "不"), j("6", 0.5, "学"), j("5", 1, "习")],
+    "F",
+  ),
+  makeMeasure(
+    laborId,
+    24,
+    2,
+    [
+      j("5", 0.25, "我"),
+      j("6", 0.25, "们"),
+      j("1'", 0.25, "大"),
+      j("3'", 0.25, "家"),
+      j("2'", 0.5, "不"),
+      j("5", 0.5, "学"),
+    ],
+    "F",
+  ),
+  makeMeasure(laborId, 25, 2, [j("1'", 2, "他")], "Bb", true),
+  makeMeasure(
+    laborId,
+    26,
+    2,
+    [
+      j("1'", 0.75, "要"),
+      j("2'", 0.25, "学"),
+      j("1'", 0.5, "喜"),
+      j("5", 0.5, "鹊"),
+    ],
+    "Bb",
+  ),
+  makeMeasure(
+    laborId,
+    27,
+    2,
+    [j("6", 0.5, "造"), j("6", 0.5, "新"), j("5", 1, "房")],
+    "F",
+  ),
+  makeMeasure(
+    laborId,
+    28,
+    2,
+    [
+      j("3'", 0.75, "要"),
+      j("1'", 0.25, "学"),
+      j("6", 0.5, "蜜"),
+      j("5", 0.5, "蜂"),
+    ],
+    "Eb",
+  ),
+  makeMeasure(
+    laborId,
+    29,
+    2,
+    [j("1", 0.5, "采"), j("3", 0.5, "蜜"), j("2", 1, "糖")],
+    "Bb",
+  ),
+  makeMeasure(
+    laborId,
+    30,
+    2,
+    [
+      j("1", 0.5, "劳", 0.78),
+      j("1", 0.25, "动", 0.78),
+      j("2", 0.25, "的", 0.78),
+      j("3", 0.5, "快"),
+      j("5", 0.5, "乐"),
+    ],
+    "Bb",
+  ),
+  makeMeasure(
+    laborId,
+    31,
+    2,
+    [j("1'", 0.5, "说"), j("5", 0.5, "不"), j("6", 1, "尽")],
+    "F",
+  ),
+  makeMeasure(laborId, 32, 2, [j("6", 2)], "F", true),
+  makeMeasure(
+    laborId,
+    33,
+    2,
+    [j("5", 0.5, "劳"), j("6", 0.5, "动"), j("1'", 1, "创")],
+    "Bb",
+  ),
+  makeMeasure(
+    laborId,
+    34,
+    2,
+    [j("3'", 0.75, "造"), j("2'", 0.25, "最"), j("5", 1, "光")],
+    "F",
+  ),
+  makeMeasure(laborId, 35, 2, [j("1'", 2, "荣")], "Bb", true),
+];
+
+const laborSong: SongModel = {
+  id: laborId,
+  title: "劳动最光荣",
+  subtitle: "降 B 大调 · 图片简谱校对样例",
+  key: "Bb",
+  tonicMidi: laborTonic,
+  timeSignature: { beats: 2, beatType: 4 },
+  tempo: 96,
+  suggestedTempo: "♩ = 96 · 活泼、愉快、健康地",
+  measures: laborMeasures,
+  source: {
+    imagePath: "/劳动最光荣.gif",
+    notation: "jianpu",
+    overallConfidence: 0.9,
+    coverage: "完整页面，35 小节",
+    attribution: "用户提供的本地测试图片 · 不作为内置曲库分发",
+    recognizer: "开发期人工校对 fixture",
+    verificationStatus: "development-fixture",
+    notes: [
+      "调号识别为 1=♭B，拍号 2/4。",
+      "已补齐原图全部 35 小节，并将主旋律调整到适合电子琴演示的实际音区。",
+      "第 18、20、30 小节的下划线与高音点较模糊，保留低置信度提示供人工确认。",
+    ],
+  },
+};
+
+export const SAMPLE_SONGS = [
+  recommendFingering(happySong),
+  recommendFingering(laborSong),
+];
+
+export function createBlankSong(imagePath: string, title = "待校对的新乐谱"): SongModel {
+  const measures = Array.from({ length: 4 }, (_, index) =>
+    makeMeasure("manual", index + 1, 4, []),
+  );
+  return {
+    id: `manual-${Date.now()}`,
+    title,
+    subtitle: "手动校对模式",
+    key: "C",
+    tonicMidi: pitchNameToMidi("C4"),
+    timeSignature: { beats: 4, beatType: 4 },
+    tempo: 80,
+    suggestedTempo: "♩ = 80",
+    measures,
+    source: {
+      imagePath,
+      notation: "manual",
+      overallConfidence: 0,
+      coverage: "未识别",
+      attribution: "本地临时图片",
+      recognizer: "正式识别服务尚未返回结果",
+      verificationStatus: "manual-required",
+      notes: [
+        "未命中两份已预识别 fixture。",
+        "请从空白小节手动添加音符，或接入正式多模态识别适配器。",
+      ],
+    },
+  };
+}

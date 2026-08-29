@@ -1,0 +1,30 @@
+{
+  "name": "scoretokeys-kids",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Source-faithful sheet music verification and keyboard learning for children.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "test": "node scripts/run-tests.mjs",
+    "check": "npm test && npm run build",
+    "preview": "vite preview",
+    "bootstrap:unpkg": "node scripts/install-from-unpkg.mjs"
+  },
+  "dependencies": {
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.32",
+    "@types/react": "19.1.10",
+    "@types/react-dom": "19.1.7",
+    "esbuild": "0.25.9",
+    "typescript": "5.8.3",
+    "vite": "7.3.6"
+  }
+}
