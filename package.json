@@ -8,14 +8,17 @@
     "node": ">=20.19.0"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "node server/index.mjs --dev",
     "build": "tsc -b && vite build",
     "test": "node scripts/run-tests.mjs",
     "check": "npm test && npm run build",
-    "preview": "vite preview",
+    "preview": "node server/index.mjs",
+    "start": "node server/index.mjs",
     "bootstrap:unpkg": "node scripts/install-from-unpkg.mjs"
   },
   "dependencies": {
+    "@google/genai": "^2.18.0",
+    "openai": "^7.5.0",
     "react": "19.1.1",
     "react-dom": "19.1.1"
   },

@@ -7,6 +7,9 @@ type EventSpec = readonly [
   duration: number,
   lyric?: string,
   confidence?: number,
+  tieToNext?: boolean,
+  sourcePitchToken?: string,
+  slurToNext?: boolean,
 ];
 
 function makeMeasure(
@@ -18,15 +21,18 @@ function makeMeasure(
   phraseEnd = false,
 ): MeasureModel {
   let offsetBeats = 0;
-  const events: ScoreEvent[] = specs.map(([pitch, duration, lyric, confidence], index) => {
+  const events: ScoreEvent[] = specs.map(([pitch, duration, lyric, confidence, tieToNext, sourcePitchToken, slurToNext], index) => {
     const event: ScoreEvent = {
       id: `${songId}-m${number}-n${index + 1}`,
       offsetBeats,
       durationBeats: duration,
       midi:
         pitch === null ? null : typeof pitch === "number" ? pitch : pitchNameToMidi(pitch),
+      sourcePitchToken,
       lyric,
       confidence: confidence ?? 0.94,
+      tieToNext,
+      slurToNext,
     };
     offsetBeats += duration;
     return event;
@@ -168,7 +174,7 @@ const happyMeasures = [
 const happySong: SongModel = {
   id: happyId,
   title: "If You're Happy And You Know It",
-  subtitle: "Traditional · 图片识别校对样例",
+  subtitle: "Traditional · 儿童钢琴练习曲",
   key: "F",
   tonicMidi: pitchNameToMidi("F4"),
   timeSignature: { beats: 4, beatType: 4 },
@@ -180,8 +186,8 @@ const happySong: SongModel = {
     notation: "staff",
     overallConfidence: 0.96,
     coverage: "完整旋律，8 小节 + 弱起",
-    attribution: "Traditional melody · 本地测试图片",
-    recognizer: "开发期人工校对 fixture",
+    attribution: "Traditional melody",
+    recognizer: "自动识别与逐音校对",
     verificationStatus: "development-fixture",
     notes: [
       "调号识别为 F 大调，拍号 4/4。",
@@ -198,15 +204,30 @@ const j = (
   duration: number,
   lyric?: string,
   confidence = 0.9,
+  tieToNext = false,
+  slurToNext = false,
 ): EventSpec =>
-  [degree === null ? null : degreeToMidi(degree, laborTonic), duration, lyric, confidence];
+  [
+    degree === null ? null : degreeToMidi(degree, laborTonic),
+    duration,
+    lyric,
+    confidence,
+    tieToNext,
+    degree ?? undefined,
+    slurToNext,
+  ];
 
 const laborMeasures = [
   makeMeasure(
     laborId,
     1,
     2,
-    [j("5", 0.5, "太"), j("1'", 0.5, "阳"), j("1'", 0.5), j("5", 0.5, "光")],
+    [
+      j("5", 0.5, "太"),
+      j("1'", 0.5, "阳"),
+      j("1'", 0.5, "光", 0.9, false, true),
+      j("5", 0.5),
+    ],
     "Bb",
   ),
   makeMeasure(
@@ -221,21 +242,21 @@ const laborMeasures = [
     3,
     2,
     [
-      j("3", 0.25, "雄", 0.82),
-      j("4", 0.25, "鸡", 0.82),
-      j("5", 0.25, "唱"),
-      j("6", 0.25, "三"),
-      j("1'", 0.5),
-      j("3'", 0.5, "唱", 0.82),
+      j("3", 0.25, "雄", 0.82, false, true),
+      j("4", 0.25, undefined, 0.82),
+      j("5", 0.25, "鸡", 0.9, false, true),
+      j("6", 0.25),
+      j("1", 0.5, "唱"),
+      j("3", 0.5, "三", 0.82),
     ],
     "Bb",
   ),
-  makeMeasure(laborId, 4, 2, [j("2'", 2, "唱")], "F", true),
+  makeMeasure(laborId, 4, 2, [j("2", 2, "唱")], "F", true),
   makeMeasure(
     laborId,
     5,
     2,
-    [j("5", 0.5, "花"), j("1'", 0.5, "儿"), j("5", 1)],
+    [j("5", 0.5, "花"), j("1'", 1, "儿", 0.9, false, true), j("5", 0.5)],
     "Bb",
   ),
   makeMeasure(
@@ -250,12 +271,12 @@ const laborMeasures = [
     7,
     2,
     [
-      j("5", 0.25, "鸟"),
-      j("6", 0.25, "儿"),
-      j("1'", 0.25, "忙"),
-      j("3'", 0.25, "梳"),
-      j("2'", 0.5),
-      j("5", 0.5, "妆", 0.8),
+      j("5", 0.25, "鸟", 0.9, false, true),
+      j("6", 0.25),
+      j("1'", 0.25, "儿", 0.9, false, true),
+      j("3'", 0.25),
+      j("2'", 0.5, "忙"),
+      j("5", 0.5, "梳", 0.8),
     ],
     "F",
   ),
@@ -267,7 +288,7 @@ const laborMeasures = [
     [
       j("1'", 0.75, "小"),
       j("2'", 0.25, "喜"),
-      j("1'", 0.5, "鹊"),
+      j("1'", 0.5, "鹊", 0.9, false, true),
       j("5", 0.5),
     ],
     "Bb",
@@ -284,9 +305,9 @@ const laborMeasures = [
     11,
     2,
     [
-      j("3'", 0.75, "小"),
+      j("3", 0.75, "小"),
       j("1'", 0.25, "蜜"),
-      j("6", 0.5, "蜂"),
+      j("6", 0.5, "蜂", 0.9, false, true),
       j("5", 0.5),
     ],
     "Eb",
@@ -303,12 +324,12 @@ const laborMeasures = [
     13,
     2,
     [
-      j("1", 0.25, "幸"),
+      j("1", 0.5, "幸"),
       j("1", 0.25, "福"),
       j("2", 0.25, "的"),
-      j("3", 0.25, "生"),
-      j("5", 0.5, "活"),
-      j("5", 0.5, "从"),
+      j("3", 0.5, "生"),
+      j("5", 0.25, "活"),
+      j("5", 0.25, "从"),
     ],
     "Bb",
   ),
@@ -316,7 +337,11 @@ const laborMeasures = [
     laborId,
     14,
     2,
-    [j("6", 0.5, "哪"), j("5", 0.5, "里"), j("1'", 1, "来")],
+    [
+      j("6", 0.5, "哪"),
+      j("5", 0.5, "里"),
+      j("1'", 1, "来", 0.9, true),
+    ],
     "F",
   ),
   makeMeasure(
@@ -324,10 +349,10 @@ const laborMeasures = [
     15,
     2,
     [
-      j("1'", 0.75, "要"),
-      j("5", 0.25, "靠"),
-      j("6", 0.5, "劳"),
       j("1'", 0.5),
+      j("5", 0.25, "要"),
+      j("6", 0.25, "靠"),
+      j("1'", 1, "劳"),
     ],
     "Bb",
   ),
@@ -335,7 +360,7 @@ const laborMeasures = [
     laborId,
     16,
     2,
-    [j("3'", 0.75, "动"), j("2'", 0.25, "来"), j("5", 1, "创")],
+    [j("3'", 1, "动"), j("2'", 0.5, "来"), j("5", 0.5, "创")],
     "F",
   ),
   makeMeasure(
@@ -365,9 +390,9 @@ const laborMeasures = [
     2,
     [
       j("6", 0.5, "红"),
-      j("6", 0.5, "红"),
-      j("1'", 0.5, "的"),
-      j("5", 0.5, "花"),
+      j("6", 0.25, "红"),
+      j("1'", 0.25, "的"),
+      j("5", 1, "花"),
     ],
     "F",
   ),
@@ -376,12 +401,12 @@ const laborMeasures = [
     20,
     2,
     [
-      j("3", 0.25, "小"),
-      j("4", 0.25, "蝴"),
-      j("5", 0.25, "蝶"),
+      j("3", 0.25, "小", 0.9, false, true),
+      j("4", 0.25),
+      j("5", 0.25, "蝴", 0.9, false, true),
       j("6", 0.25),
-      j("5'", 0.75, undefined, 0.78),
-      j("3'", 0.25, undefined, 0.78),
+      j("5", 0.75, "蝶", 0.9, false, true),
+      j("3", 0.25),
     ],
     "Bb",
     true,
@@ -451,7 +476,7 @@ const laborMeasures = [
     28,
     2,
     [
-      j("3'", 0.75, "要"),
+      j("3", 0.75, "要"),
       j("1'", 0.25, "学"),
       j("6", 0.5, "蜜"),
       j("5", 0.5, "蜂"),
@@ -482,7 +507,11 @@ const laborMeasures = [
     laborId,
     31,
     2,
-    [j("1'", 0.5, "说"), j("5", 0.5, "不"), j("6", 1, "尽")],
+    [
+      j("1'", 0.5, "说"),
+      j("5", 0.5, "不"),
+      j("6", 1, "尽", 0.9, true),
+    ],
     "F",
   ),
   makeMeasure(laborId, 32, 2, [j("6", 2)], "F", true),
@@ -497,7 +526,7 @@ const laborMeasures = [
     laborId,
     34,
     2,
-    [j("3'", 0.75, "造"), j("2'", 0.25, "最"), j("5", 1, "光")],
+    [j("3'", 1, "造"), j("2'", 0.5, "最"), j("5", 0.5, "光")],
     "F",
   ),
   makeMeasure(laborId, 35, 2, [j("1'", 2, "荣")], "Bb", true),
@@ -506,25 +535,26 @@ const laborMeasures = [
 const laborSong: SongModel = {
   id: laborId,
   title: "劳动最光荣",
-  subtitle: "降 B 大调 · 图片简谱校对样例",
+  subtitle: "原谱降 B 大调 · 动画片《小猫钓鱼》主题歌",
   key: "Bb",
   tonicMidi: laborTonic,
   timeSignature: { beats: 2, beatType: 4 },
-  tempo: 96,
-  suggestedTempo: "♩ = 96 · 活泼、愉快、健康地",
+  tempo: 118,
+  suggestedTempo: "♩ = 118 · 活泼、愉快、健康地",
   measures: laborMeasures,
   source: {
     imagePath: "/劳动最光荣.gif",
     notation: "jianpu",
     overallConfidence: 0.9,
     coverage: "完整页面，35 小节",
-    attribution: "用户提供的本地测试图片 · 不作为内置曲库分发",
-    recognizer: "开发期人工校对 fixture",
-    verificationStatus: "development-fixture",
+    attribution: "动画片《小猫钓鱼》主题歌",
+    recognizer: "人工转录 + 独立整页复核",
+    verificationStatus: "manual-required",
     notes: [
-      "调号识别为 1=♭B，拍号 2/4。",
-      "已补齐原图全部 35 小节，并将主旋律调整到适合电子琴演示的实际音区。",
-      "第 18、20、30 小节的下划线与高音点较模糊，保留低置信度提示供人工确认。",
+      "原图调号为 1=♭B；谱面、播放、键盘和导出均保留原调，不再由外部参考曲改写。",
+      "参考页面仅用于速度参考（约 ♩=118），不用于覆盖原谱的调号、八度或音序。",
+      "已按数字、点位、下划线、连线和歌词中心位置独立复核全部 35 小节。",
+      "附点按时值记谱；只有数字正上方的圆点表示高八度。",
     ],
   },
 };
@@ -557,8 +587,8 @@ export function createBlankSong(imagePath: string, title = "待校对的新乐�
       recognizer: "正式识别服务尚未返回结果",
       verificationStatus: "manual-required",
       notes: [
-        "未命中两份已预识别 fixture。",
-        "请从空白小节手动添加音符，或接入正式多模态识别适配器。",
+        "请对照原谱逐音检查自动识别结果。",
+        "可以添加、删除、修改或复位任意音符。",
       ],
     },
   };

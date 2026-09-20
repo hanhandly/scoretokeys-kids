@@ -1,4 +1,4 @@
-# ScoreToKeys Kids 开发手册
+# 小琴伴 (ScoreToKeys Kids) 开发手册
 
 > 文档版本：0.1  
 > 更新日期：2026-08-19  
@@ -589,6 +589,18 @@ eventId → measureId → systemId → pageId → element
 
 不得恢复为独立的 `performance.now()` 动画时钟。后者会忽略声卡和蓝牙延迟，并在后台标签页或系统繁忙时漂移。
 
+2026-09-20 按用户指定的 `0829` 播放链恢复：`PianoSynth.prepare()` 只恢复 AudioContext 并确认其运行状态，不创建预热音、不采样等待稳定；`schedule()` 等待恢复完成，以 `currentTime + 0.05` 为所有声部和节拍器的共同起点。50 ms 是排程余量，不是设备延迟补偿。
+
+`AudioPlaybackClock.getPositionBeat()` 返回唯一播放位置。输出时间戳有效时直接投影其时间，不再对该结果施加 `currentTime - outputLatency` 的额外上限；时间戳不可用时才使用延迟字段回推。`usePracticePlayer` 每帧读取该位置，并沿用约 28 ms 的画面更新间隔；这一间隔只限制绘制频率，不承担音乐计时。暂停恢复、配置变化、谱面、琴键、指法、进度、读数及自动跟随共用同一拍位。
+
+首次呈现由 `AudioPlaybackClock.sample()` 一次读取 `positionBeat` 与 `outputStarted`。`schedule()` 返回后继续保持 `starting`，直到浏览器输出时钟到达 `baseTime`；不能仅因排程完成就进入 `playing`，否则起点处的音符和琴键会先亮。首次放行时同步提交当前采样拍位，不重新从 `fromBeat` 计时；之后保持原有时钟和绘制节奏。等待输出时仍保留可取消的启动状态，暂停、停止、seek、重播或配置变化不能被旧帧重新激活。`outputStarted` 仅表示浏览器报告的时间边界，不是最终扬声器声学到达的测量。
+
+保留启动代次取消、停止/seek 边界安全、点击音符播放和从头播放；也保留 `getSecondsPerBeat`、`buildAudioEventWindows`、弱起、连音与音符包络修正。生成进度和开头小节的一致性门禁仍然存在，但不再检查输出时钟稳定性或弹出校准窗口。不要把整个旧版 App 覆盖回来。
+
+`src/core/audioCalibration.ts` 现在仅用于删除旧 `scoretokeys-kids.audio-calibration.v1`、`v2`、`v3` 设置；没有解析、读取、写入或应用补偿的接口。启动清理只操作这三个键，不影响语言或其他数据。删除失败会提示，但旧值仍不会影响当前播放。旧标签页须完整刷新，释放之前的 AudioContext 和内存状态。
+
+手动校准、麦克风诊断、测试扫频和独立呈现延迟已退出当前播放路径。浏览器时间戳和主机回环仍不能独立验证最终扬声器与显示器的到达时间；恢复实现基线不能被表述为用户端音画问题已经修复。不要用 LLM 推测或包含隐藏录音缓冲的往返测量重新生成播放偏移。
+
 ### 13.3 播放控制
 
 - 播放、暂停、停止和 seek 必须取消旧调度；
@@ -827,7 +839,7 @@ npm run bootstrap:unpkg
 
 ### 声音和动画不同步
 
-检查视觉位置是否来自 `AudioPlaybackClock`，以及是否错误恢复为 `performance.now()`。同时检查设备 `outputLatency`、seek 后重新调度和旧 oscillator 是否已经停止。
+先完整刷新旧标签页，确认页面没有校准入口且旧 `v1` / `v2` / `v3` 设置不再参与播放。检查谱面、琴键和进度是否共用 `AudioPlaybackClock.getPositionBeat()`，启动是否只等待 `resume()` 后进行 50 ms 提前排程，以及暂停、停止和 seek 是否取消了旧 oscillator。按冷启动、重播、暂停恢复和点击音符分别对照，不要修改歌曲拍位或继续增加固定偏移。实际录音须按音高和事件顺序配对，不能贪心匹配最近的一拍；主机 loopback 与屏幕采样仅说明主机边界内的结果，不能代替用户终端的最终听觉和显示验收。
 
 ### 乐谱听起来像多了一个音
 

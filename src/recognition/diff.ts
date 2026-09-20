@@ -13,6 +13,7 @@ const FLOAT_EPSILON = 1e-6;
 const HIGH_RISK_DIFFERENCE_KINDS = new Set<EventDifferenceKind>([
   "missing_event",
   "octave_only_difference",
+  "notation_evidence_difference",
   "timing_or_duration_difference",
   "coverage_difference",
 ]);
@@ -25,8 +26,9 @@ const EVENT_DIFFERENCE_ORDER: Record<EventDifferenceKind, number> = {
   rest_difference: 4,
   lyric_difference: 5,
   spelling_difference: 6,
-  measure_structure_difference: 7,
-  coverage_difference: 8,
+  notation_evidence_difference: 7,
+  measure_structure_difference: 8,
+  coverage_difference: 9,
 };
 
 function nearlyEqual(left: number, right: number): boolean {
@@ -160,6 +162,16 @@ function riskForDifference(kind: EventDifferenceKind): "high" | "medium" | "low"
     return "low";
   }
   return "medium";
+}
+
+function sameJianpuEvidence(
+  left: RecognitionEventCandidate,
+  right: RecognitionEventCandidate,
+): boolean {
+  return (
+    JSON.stringify(left.evidence.jianpu ?? null) ===
+    JSON.stringify(right.evidence.jianpu ?? null)
+  );
 }
 
 function addDifference(
@@ -304,6 +316,18 @@ export function diffRecognitionCandidates(
         leftEvent,
         rightEvent,
         `Event '${eventKey}' has mismatched structural metadata.`,
+      );
+    }
+
+    if (!sameJianpuEvidence(leftEvent, rightEvent)) {
+      addDifference(
+        differences,
+        "notation_evidence_difference",
+        eventKey,
+        leftEvent.measureNumber,
+        leftEvent,
+        rightEvent,
+        `Event '${eventKey}' has different source-glyph evidence.`,
       );
     }
 

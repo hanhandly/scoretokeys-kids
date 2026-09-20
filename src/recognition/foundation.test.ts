@@ -275,6 +275,113 @@ describe("recognition foundation", () => {
     assert.equal(differences[0].risk, "high");
   });
 
+  it("requires aligned octave-dot evidence for jianpu images", () => {
+    const baseEvent = createNoteEvent(1, 0, 0, 4, 72, "C", "natural", 5);
+    const invalidEvent: RecognitionEventCandidate = {
+      ...baseEvent,
+      evidence: {
+        ...baseEvent.evidence,
+        observedSymbols: ["digit:1", "octave-dot:above"],
+        jianpu: {
+          digit: 1,
+          octaveShift: 1,
+          octaveDots: [
+            {
+              position: "above",
+              horizontalOffset: 0.8,
+              verticalGap: 0.4,
+              diameter: 0.2,
+            },
+          ],
+          underlineCount: 0,
+          durationDotCount: 0,
+          sustainDashCount: 3,
+        },
+      },
+    };
+    const candidate = createCandidate(
+      "reader_a",
+      "reader_a",
+      [invalidEvent],
+      { sourceType: "jianpu-image" },
+    );
+    const result = validateRecognitionCandidate(candidate, {
+      sourceId: SOURCE_ID,
+      sourceType: "jianpu-image",
+      expectedRole: "reader_a",
+      regions: [REGION_ONE],
+      measures: SINGLE_MEASURE,
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(
+      result.issues.some((issue) => issue.code === "invalid_jianpu_evidence"),
+      true,
+    );
+  });
+
+  it("treats reader disagreement about jianpu dot evidence as high risk", () => {
+    const baseEvent = createNoteEvent(1, 0, 0, 4, 60, "C", "natural", 4);
+    const withEvidence = (
+      octaveShift: number,
+    ): RecognitionEventCandidate => ({
+      ...baseEvent,
+      evidence: {
+        ...baseEvent.evidence,
+        jianpu: {
+          digit: 1,
+          octaveShift,
+          octaveDots:
+            octaveShift === 0
+              ? []
+              : [
+                  {
+                    position: "above",
+                    horizontalOffset: 0,
+                    verticalGap: 0.4,
+                    diameter: 0.2,
+                  },
+                ],
+          underlineCount: 0,
+          durationDotCount: 0,
+          sustainDashCount: 3,
+        },
+      },
+    });
+    const differences = diffRecognitionCandidates(
+      createCandidate("reader_a", "reader_a", [withEvidence(0)], {
+        sourceType: "jianpu-image",
+      }),
+      createCandidate("reader_b", "reader_b", [withEvidence(1)], {
+        sourceType: "jianpu-image",
+      }),
+    );
+
+    const evidenceDifference = differences.find(
+      (difference) => difference.kind === "notation_evidence_difference",
+    );
+    assert.equal(evidenceDifference?.risk, "high");
+  });
+
+  it("rejects pitch spelling that contradicts the MIDI value", () => {
+    const candidate = createCandidate("reader_a", "reader_a", [
+      createNoteEvent(1, 0, 0, 4, 60, "D", "natural", 4),
+    ]);
+    const result = validateRecognitionCandidate(candidate, {
+      sourceId: SOURCE_ID,
+      sourceType: SOURCE_TYPE,
+      expectedRole: "reader_a",
+      regions: [REGION_ONE],
+      measures: SINGLE_MEASURE,
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(
+      result.issues.some((issue) => issue.code === "pitch_midi_mismatch"),
+      true,
+    );
+  });
+
   it("invokes reader A and reader B independently in parallel", async () => {
     const gate = createDeferred();
     const events = [createNoteEvent(1, 0, 0, 4, 60, "C", "natural", 4)];

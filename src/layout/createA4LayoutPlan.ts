@@ -141,7 +141,7 @@ export function createA4LayoutPlan(
       sourceSystemKey.get(measureNumbers.join(",")) ?? null,
     ),
   );
-  const maxSystemsPerPage = options.mode === "source-faithful" ? 7 : 5;
+  const maxSystemsPerPage = 5;
   const explicitBreaks = new Set(
     options.mode === "source-faithful"
       ? options.sourceHint?.pageBreakAfterSystem ?? []

@@ -141,12 +141,12 @@ export function buildChordPalette(key: string): ChordDefinition[] {
 }
 
 export function chordSolfege(chord: ChordDefinition, song: SongModel): string {
-  const syllables = ["多", "来", "米", "发", "嗦", "拉", "西"];
+  const syllables = ["do", "re", "mi", "fa", "sol", "la", "ti"];
   return chord.pitchClasses
     .map((pitchClass) => {
       const syntheticMidi = song.tonicMidi + positiveModulo(pitchClass - song.tonicMidi, 12);
       const { degree, accidental } = midiToJianpu(syntheticMidi, song);
-      const prefix = accidental === 1 ? "升" : accidental === -1 ? "降" : "";
+      const prefix = accidental === 1 ? "♯" : accidental === -1 ? "♭" : "";
       return `${prefix}${syllables[degree - 1]}`;
     })
     .join(" · ");

@@ -17,13 +17,19 @@ export interface TimeSignature {
 
 export interface ScoreEvent {
   id: string;
+  /** Quarter-note units from the start of the measure. */
   offsetBeats: number;
+  /** Duration in quarter-note units. */
   durationBeats: number;
   midi: number | null;
+  /** Original numbered-notation pitch token, when available (for example 3'). */
+  sourcePitchToken?: string;
   lyric?: string;
   confidence: number;
   finger?: number;
   fingerLocked?: boolean;
+  tieToNext?: boolean;
+  slurToNext?: boolean;
 }
 
 export interface MeasureModel {
@@ -37,6 +43,7 @@ export interface MeasureModel {
 
 export interface SourceInfo {
   imagePath: string;
+  imagePaths?: string[];
   notation: SourceNotation;
   overallConfidence: number;
   coverage: string;
@@ -44,6 +51,8 @@ export interface SourceInfo {
   recognizer: string;
   verificationStatus: SourceVerificationStatus;
   notes: string[];
+  layoutSystems?: number[][];
+  pageBreakBeforeSystem?: number[];
 }
 
 export interface SongModel {
@@ -53,6 +62,7 @@ export interface SongModel {
   key: string;
   tonicMidi: number;
   timeSignature: TimeSignature;
+  /** Quarter-note beats per minute. */
   tempo: number;
   suggestedTempo: string;
   measures: MeasureModel[];
@@ -84,7 +94,9 @@ export interface ChordAssignment extends ChordDefinition {
 export interface PerformanceEvent {
   id: string;
   sourceEventId?: string;
+  /** Absolute position in quarter-note units from the start of the song. */
   startBeat: number;
+  /** Duration in quarter-note units. */
   durationBeats: number;
   midi: number;
   hand: Hand;
@@ -92,7 +104,10 @@ export interface PerformanceEvent {
   voice: Voice;
   velocity: number;
   measureNumber: number;
+  cue?: string;
   chord?: string;
+  tieFromPrevious?: boolean;
+  tieToNext?: boolean;
 }
 
 export interface MeasureSpan {
@@ -106,4 +121,28 @@ export interface ValidationIssue {
   message: string;
   measureNumber?: number;
   eventId?: string;
+}
+
+export interface SessionSong {
+  id: string;
+  song: SongModel;
+  imageUrls: string[];
+  status: "reading" | "ready" | "error";
+  error?: string;
+}
+
+export type TeachingGenerationStage =
+  | "idle"
+  | "validating-score"
+  | "building-timeline"
+  | "verifying-opening"
+  | "preparing-audio"
+  | "finalizing"
+  | "ready"
+  | "error";
+
+export interface TeachingGenerationState {
+  stage: TeachingGenerationStage;
+  progress: number;
+  message?: string;
 }

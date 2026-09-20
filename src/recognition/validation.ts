@@ -6,10 +6,37 @@ import {
   type PitchAccidental,
   type PitchStep,
   type RecognitionCandidate,
+  type RecognitionEventCandidate,
   RECOGNITION_CONTRACT_VERSION,
 } from "./contracts";
 
 const FLOAT_EPSILON = 1e-6;
+const PITCH_CLASS_BY_STEP = {
+  C: 0,
+  D: 2,
+  E: 4,
+  F: 5,
+  G: 7,
+  A: 9,
+  B: 11,
+} as const;
+const ACCIDENTAL_OFFSET = {
+  bb: -2,
+  b: -1,
+  natural: 0,
+  "#": 1,
+  "##": 2,
+} as const;
+
+function pitchSpellingToMidi(
+  spelling: NonNullable<RecognitionEventCandidate["pitchSpelling"]>,
+): number {
+  return (
+    (spelling.octave + 1) * 12 +
+    PITCH_CLASS_BY_STEP[spelling.step] +
+    ACCIDENTAL_OFFSET[spelling.accidental]
+  );
+}
 
 function isFiniteNumber(value: number): boolean {
   return Number.isFinite(value);
@@ -503,6 +530,80 @@ export function validateRecognitionCandidate(
       });
     }
 
+    if (candidate.sourceType === "jianpu-image") {
+      const jianpu = event.evidence.jianpu;
+      if (jianpu === undefined) {
+        issue(issues, {
+          code: "missing_jianpu_evidence",
+          severity: "error",
+          message: `Event '${event.eventKey}' must include structured jianpu glyph evidence.`,
+          measureNumber: event.measureNumber,
+          eventKey: event.eventKey,
+        });
+      } else {
+        const expectedDotPosition =
+          jianpu.octaveShift > 0 ? "above" : "below";
+        const octaveDotsValid =
+          Number.isInteger(jianpu.octaveShift) &&
+          Math.abs(jianpu.octaveShift) <= 2 &&
+          jianpu.octaveDots.length === Math.abs(jianpu.octaveShift) &&
+          jianpu.octaveDots.every(
+            (dot) =>
+              dot.position === expectedDotPosition &&
+              isFiniteNumber(dot.horizontalOffset) &&
+              Math.abs(dot.horizontalOffset) <= 0.35 &&
+              isFiniteNumber(dot.verticalGap) &&
+              dot.verticalGap >= 0.05 &&
+              dot.verticalGap <= 1.25 &&
+              isFiniteNumber(dot.diameter) &&
+              dot.diameter >= 0.08 &&
+              dot.diameter <= 0.45,
+          );
+        const digitValid =
+          Number.isInteger(jianpu.digit) &&
+          jianpu.digit >= 0 &&
+          jianpu.digit <= 7 &&
+          (event.isRest ? jianpu.digit === 0 : jianpu.digit >= 1);
+        const rhythmEvidenceValid =
+          Number.isInteger(jianpu.underlineCount) &&
+          jianpu.underlineCount >= 0 &&
+          jianpu.underlineCount <= 3 &&
+          Number.isInteger(jianpu.durationDotCount) &&
+          jianpu.durationDotCount >= 0 &&
+          jianpu.durationDotCount <= 2 &&
+          Number.isInteger(jianpu.sustainDashCount) &&
+          jianpu.sustainDashCount >= 0 &&
+          jianpu.sustainDashCount <= 3;
+        const baseDuration = 1 / 2 ** jianpu.underlineCount;
+        const dottedMultiplier =
+          jianpu.durationDotCount === 0
+            ? 1
+            : jianpu.durationDotCount === 1
+              ? 1.5
+              : 1.75;
+        const evidencedDuration =
+          baseDuration * dottedMultiplier + jianpu.sustainDashCount;
+        const durationMatchesEvidence =
+          Math.abs(event.durationBeats - evidencedDuration) <= 0.0001;
+
+        if (
+          !octaveDotsValid ||
+          !digitValid ||
+          !rhythmEvidenceValid ||
+          !durationMatchesEvidence
+        ) {
+          issue(issues, {
+            code: "invalid_jianpu_evidence",
+            severity: "error",
+            message:
+              `Event '${event.eventKey}' has invalid or geometrically unaligned jianpu evidence.`,
+            measureNumber: event.measureNumber,
+            eventKey: event.eventKey,
+          });
+        }
+      }
+    }
+
     if (event.lyric !== null && event.lyric.trim().length === 0) {
       issue(issues, {
         code: "invalid_lyric",
@@ -554,6 +655,14 @@ export function validateRecognitionCandidate(
             code: "invalid_pitch_spelling",
             severity: "error",
             message: `Event '${event.eventKey}' has invalid pitch spelling.`,
+            measureNumber: event.measureNumber,
+            eventKey: event.eventKey,
+          });
+        } else if (pitchSpellingToMidi(event.pitchSpelling) !== event.midi) {
+          issue(issues, {
+            code: "pitch_midi_mismatch",
+            severity: "error",
+            message: `Event '${event.eventKey}' pitch spelling does not match MIDI ${event.midi}.`,
             measureNumber: event.measureNumber,
             eventKey: event.eventKey,
           });

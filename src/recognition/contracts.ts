@@ -64,10 +64,30 @@ export interface PitchSpelling {
   readonly octave: number;
 }
 
+export interface JianpuOctaveDotEvidence {
+  readonly position: "above" | "below";
+  /** Horizontal offset from the digit center, measured in digit widths. */
+  readonly horizontalOffset: number;
+  /** Gap from the digit edge, measured in digit heights. */
+  readonly verticalGap: number;
+  /** Dot diameter measured in digit heights. */
+  readonly diameter: number;
+}
+
+export interface JianpuNotationEvidence {
+  readonly digit: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  readonly octaveShift: number;
+  readonly octaveDots: readonly JianpuOctaveDotEvidence[];
+  readonly underlineCount: number;
+  readonly durationDotCount: number;
+  readonly sustainDashCount: number;
+}
+
 export interface EventEvidence {
   readonly confidence: number;
   readonly rationale: string;
   readonly observedSymbols: readonly string[];
+  readonly jianpu?: JianpuNotationEvidence;
 }
 
 export interface RecognitionEventCandidate {
@@ -133,8 +153,11 @@ export type DeterministicIssueCode =
   | "invalid_rest_encoding"
   | "invalid_midi"
   | "invalid_pitch_spelling"
+  | "pitch_midi_mismatch"
   | "invalid_lyric"
   | "invalid_confidence"
+  | "missing_jianpu_evidence"
+  | "invalid_jianpu_evidence"
   | "uncovered_measure_has_events"
   | "measure_occupancy_gap_or_overlap"
   | "measure_occupancy_incomplete";
@@ -160,6 +183,7 @@ export type EventDifferenceKind =
   | "rest_difference"
   | "lyric_difference"
   | "spelling_difference"
+  | "notation_evidence_difference"
   | "measure_structure_difference"
   | "coverage_difference";
 

@@ -1,4 +1,6 @@
 import type { PerformanceEvent } from "../types";
+import { mergeTiedPerformanceEvents } from "./model";
+import { getSecondsPerBeat } from "./tempo";
 import { midiToFrequency } from "./theory";
 
 interface AudioWindow extends Window {
@@ -18,7 +20,13 @@ export interface AudioSchedule {
 }
 
 export interface AudioPlaybackClock {
+  sample: () => AudioPlaybackSnapshot;
   getPositionBeat: () => number;
+}
+
+export interface AudioPlaybackSnapshot {
+  positionBeat: number;
+  outputStarted: boolean;
 }
 
 export interface AudioOutputClock {
@@ -26,6 +34,63 @@ export interface AudioOutputClock {
   baseLatency: number;
   outputLatency?: number;
   getOutputTimestamp?: () => AudioTimestamp;
+}
+
+export interface AudioEventWindow {
+  event: PerformanceEvent;
+  startBeat: number;
+  endBeat: number;
+  startOffsetSeconds: number;
+  durationSeconds: number;
+}
+
+export function buildAudioEventWindows(
+  schedule: AudioSchedule,
+): AudioEventWindow[] {
+  const secondsPerBeat = getSecondsPerBeat(schedule.tempo, schedule.speed);
+  return mergeTiedPerformanceEvents(
+    schedule.events.filter(
+      (event) =>
+        (event.hand === "right"
+          ? schedule.rightEnabled
+          : schedule.leftEnabled) &&
+        event.startBeat < schedule.toBeat &&
+        event.startBeat + event.durationBeats > schedule.fromBeat,
+    ),
+  ).flatMap((event) => {
+    const startBeat = Math.max(event.startBeat, schedule.fromBeat);
+    const endBeat = Math.min(
+      event.startBeat + event.durationBeats,
+      schedule.toBeat,
+    );
+    const durationSeconds = (endBeat - startBeat) * secondsPerBeat;
+    return durationSeconds < 0.003
+      ? []
+      : [
+          {
+            event,
+            startBeat,
+            endBeat,
+            startOffsetSeconds:
+              (startBeat - schedule.fromBeat) * secondsPerBeat,
+            durationSeconds,
+          },
+        ];
+  });
+}
+
+export function getToneEnvelopeTimes(
+  startTime: number,
+  durationSeconds: number,
+): { attackEnd: number; releaseStart: number; endTime: number } {
+  const endTime = startTime + durationSeconds;
+  const attackEnd = Math.min(endTime, startTime + 0.004);
+  const releaseWindow = Math.min(0.045, durationSeconds * 0.35);
+  return {
+    attackEnd,
+    releaseStart: Math.max(attackEnd, endTime - releaseWindow),
+    endTime,
+  };
 }
 
 export function getAudibleContextTime(
@@ -50,21 +115,56 @@ export function getAudibleContextTime(
     }
   }
 
-  const outputLatency = context.outputLatency ?? 0;
-  const latency =
-    Number.isFinite(outputLatency) && outputLatency > 0
-      ? outputLatency
-      : Math.max(0, context.baseLatency);
+  const outputLatency =
+    Number.isFinite(context.outputLatency) && (context.outputLatency ?? 0) > 0
+      ? context.outputLatency ?? 0
+      : 0;
+  const baseLatency =
+    Number.isFinite(context.baseLatency) && context.baseLatency > 0
+      ? context.baseLatency
+      : 0;
+  const latency = outputLatency || baseLatency;
   return Math.max(0, context.currentTime - latency);
+}
+
+export function createAudioPlaybackClock(
+  context: AudioOutputClock,
+  startTime: number,
+  fromBeat: number,
+  toBeat: number,
+  secondsPerBeat: number,
+): AudioPlaybackClock {
+  const sample = (): AudioPlaybackSnapshot => {
+    const outputTime = getAudibleContextTime(context);
+    const position =
+      fromBeat + Math.max(0, outputTime - startTime) / secondsPerBeat;
+    return {
+      positionBeat: Math.min(toBeat, position),
+      outputStarted: outputTime >= startTime,
+    };
+  };
+  return {
+    sample,
+    getPositionBeat: () => sample().positionBeat,
+  };
 }
 
 export class PianoSynth {
   private context: AudioContext | null = null;
   private activeOscillators = new Set<OscillatorNode>();
+  private scheduleGeneration = 0;
+
+  constructor(
+    private readonly contextFactory?: () => AudioContext,
+  ) {}
 
   private getContext(): AudioContext {
     if (this.context?.state === "closed") this.context = null;
     if (!this.context) {
+      if (this.contextFactory) {
+        this.context = this.contextFactory();
+        return this.context;
+      }
       const Context = window.AudioContext ?? (window as AudioWindow).webkitAudioContext;
       if (!Context) {
         throw new Error("当前浏览器不支持 Web Audio，无法播放声音。");
@@ -74,40 +174,42 @@ export class PianoSynth {
     return this.context;
   }
 
-  async schedule(schedule: AudioSchedule): Promise<AudioPlaybackClock> {
-    this.stop();
+  async prepare(): Promise<void> {
     const context = this.getContext();
     await context.resume();
+    if (this.context !== context || context.state !== "running") {
+      throw new Error("AUDIO_DEVICE_NOT_READY");
+    }
+  }
+
+  async schedule(schedule: AudioSchedule): Promise<AudioPlaybackClock> {
+    const generation = ++this.scheduleGeneration;
+    this.stopActiveOscillators();
+    await this.prepare();
+    if (generation !== this.scheduleGeneration) {
+      return {
+        sample: () => ({
+          positionBeat: schedule.fromBeat,
+          outputStarted: false,
+        }),
+        getPositionBeat: () => schedule.fromBeat,
+      };
+    }
+    const context = this.getContext();
 
     const delaySeconds = 0.05;
     const baseTime = context.currentTime + delaySeconds;
-    const secondsPerBeat = 60 / schedule.tempo / schedule.speed;
-    const audibleEvents = schedule.events.filter(
-      (event) =>
-        (event.hand === "right" ? schedule.rightEnabled : schedule.leftEnabled) &&
-        event.startBeat < schedule.toBeat &&
-        event.startBeat + event.durationBeats > schedule.fromBeat,
-    );
+    const secondsPerBeat = getSecondsPerBeat(schedule.tempo, schedule.speed);
+    const audioWindows = buildAudioEventWindows(schedule);
 
-    for (const event of audibleEvents) {
-      const clippedStartBeat = Math.max(event.startBeat, schedule.fromBeat);
-      const clippedEndBeat = Math.min(
-        event.startBeat + event.durationBeats,
-        schedule.toBeat,
-      );
-      const startTime =
-        baseTime + (clippedStartBeat - schedule.fromBeat) * secondsPerBeat;
-      const durationSeconds = Math.max(
-        0.04,
-        (clippedEndBeat - clippedStartBeat) * secondsPerBeat,
-      );
+    for (const window of audioWindows) {
       this.schedulePianoTone(
         context,
-        event.midi,
-        startTime,
-        durationSeconds,
-        event.velocity,
-        event.hand === "right" ? 0.03 : -0.18,
+        window.event.midi,
+        baseTime + window.startOffsetSeconds,
+        window.durationSeconds,
+        window.event.velocity,
+        window.event.hand === "right" ? 0.03 : -0.18,
       );
     }
 
@@ -125,15 +227,13 @@ export class PianoSynth {
       }
     }
 
-    return {
-      getPositionBeat: () => {
-        const audibleTime = getAudibleContextTime(context);
-        const position =
-          schedule.fromBeat +
-          Math.max(0, audibleTime - baseTime) / secondsPerBeat;
-        return Math.min(schedule.toBeat, position);
-      },
-    };
+    return createAudioPlaybackClock(
+      context,
+      baseTime,
+      schedule.fromBeat,
+      schedule.toBeat,
+      secondsPerBeat,
+    );
   }
 
   private schedulePianoTone(
@@ -150,8 +250,10 @@ export class PianoSynth {
     panner.pan.value = pan;
     output.connect(panner).connect(context.destination);
 
-    const attackEnd = startTime + 0.012;
-    const releaseStart = Math.max(attackEnd, startTime + durationSeconds - 0.1);
+    const { attackEnd, releaseStart, endTime } = getToneEnvelopeTimes(
+      startTime,
+      durationSeconds,
+    );
     output.gain.setValueAtTime(0.0001, startTime);
     output.gain.exponentialRampToValueAtTime(
       Math.max(0.015, velocity * 0.22),
@@ -163,7 +265,7 @@ export class PianoSynth {
     );
     output.gain.exponentialRampToValueAtTime(
       0.0001,
-      startTime + durationSeconds + 0.08,
+      endTime,
     );
 
     const partials = [
@@ -180,7 +282,7 @@ export class PianoSynth {
       partialGain.gain.value = partial.gain;
       oscillator.connect(partialGain).connect(output);
       oscillator.start(startTime);
-      oscillator.stop(startTime + durationSeconds + 0.1);
+      oscillator.stop(endTime + 0.01);
       this.activeOscillators.add(oscillator);
       oscillator.addEventListener(
         "ended",
@@ -213,8 +315,17 @@ export class PianoSynth {
   }
 
   stop(): void {
+    this.scheduleGeneration += 1;
+    this.stopActiveOscillators();
+  }
+
+  private stopActiveOscillators(): void {
     for (const oscillator of this.activeOscillators) {
-      oscillator.stop();
+      try {
+        oscillator.stop();
+      } catch {
+        // An oscillator may already have reached its scheduled stop time.
+      }
     }
     this.activeOscillators.clear();
   }

@@ -4,6 +4,9 @@ import type {
   SongModel,
 } from "../types";
 import { buildChordPalette, chordSolfege } from "../core/theory";
+import { useI18n } from "../i18n/I18nProvider";
+import { formatAccidentals } from "../i18n/messages";
+import type { TranslationKey } from "../i18n/messages";
 
 interface ArrangementPanelProps {
   song: SongModel;
@@ -21,13 +24,29 @@ interface ArrangementPanelProps {
 
 const MODES: Array<{
   value: AccompanimentMode;
-  title: string;
-  description: string;
+  titleKey: TranslationKey;
+  descriptionKey: TranslationKey;
 }> = [
-  { value: "root", title: "单音", description: "每小节只弹根音" },
-  { value: "root-fifth", title: "根音 + 五度", description: "左右交替更有律动" },
-  { value: "block", title: "柱式和弦", description: "同时按下三个音" },
-  { value: "arpeggio", title: "分解和弦", description: "固定八分音符型" },
+  {
+    value: "root",
+    titleKey: "arrangement.mode.root.title",
+    descriptionKey: "arrangement.mode.root.description",
+  },
+  {
+    value: "root-fifth",
+    titleKey: "arrangement.mode.root-fifth.title",
+    descriptionKey: "arrangement.mode.root-fifth.description",
+  },
+  {
+    value: "block",
+    titleKey: "arrangement.mode.block.title",
+    descriptionKey: "arrangement.mode.block.description",
+  },
+  {
+    value: "arpeggio",
+    titleKey: "arrangement.mode.arpeggio.title",
+    descriptionKey: "arrangement.mode.arpeggio.description",
+  },
 ];
 
 export function ArrangementPanel({
@@ -43,6 +62,7 @@ export function ArrangementPanel({
   onRecomputeFingering,
   onReharmonize,
 }: ArrangementPanelProps) {
+  const { t } = useI18n();
   const palette = buildChordPalette(song.key);
   const selectedChord =
     harmony.find((chord) => chord.measureNumber === selectedMeasure) ?? harmony[0];
@@ -51,12 +71,12 @@ export function ArrangementPanel({
     <section className={`card arrangement-card ${confirmed ? "" : "gated"}`}>
       <header className="card-header">
         <div>
-          <p className="step-kicker">STEP 2 · 可解释的自动编配</p>
-          <h2>儿童小手 · 入门难度</h2>
+          <p className="step-kicker">{t("arrangement.step")}</p>
+          <h2>{t("arrangement.heading")}</h2>
         </div>
         <div className="algorithm-badges">
-          <span>动态规划指法</span>
-          <span>调内和弦规则</span>
+          <span>{t("arrangement.fingeringBadge")}</span>
+          <span>{t("arrangement.harmonyBadge")}</span>
         </div>
       </header>
 
@@ -64,8 +84,8 @@ export function ArrangementPanel({
         <div className="gate-banner">
           <span>🔒</span>
           <p>
-            <strong>编配预览已锁定</strong>
-            先完成原谱校对并确认，避免错误音符进入后续输出。
+            <strong>{t("arrangement.lockedTitle")}</strong>
+            {t("arrangement.lockedBody")}
           </p>
         </div>
       ) : null}
@@ -74,8 +94,8 @@ export function ArrangementPanel({
         <div>
           <div className="section-heading">
             <div>
-              <span>左手伴奏难度</span>
-              <small>所有模式均由同一和弦时间线生成</small>
+              <span>{t("arrangement.leftPattern")}</span>
+              <small>{t("arrangement.sharedTimeline")}</small>
             </div>
           </div>
           <div className="mode-grid">
@@ -88,8 +108,8 @@ export function ArrangementPanel({
                 type="button"
               >
                 <span className="mode-number">{index + 1}</span>
-                <strong>{item.title}</strong>
-                <small>{item.description}</small>
+                <strong>{t(item.titleKey)}</strong>
+                <small>{t(item.descriptionKey)}</small>
                 <i />
               </button>
             ))}
@@ -99,11 +119,11 @@ export function ArrangementPanel({
         <div className="chord-editor-panel">
           <div className="section-heading">
             <div>
-              <span>和弦进行</span>
-              <small>点击小节后可修改并锁定</small>
+              <span>{t("arrangement.chordProgression")}</span>
+              <small>{t("arrangement.chordHint")}</small>
             </div>
             <button disabled={!confirmed} onClick={onReharmonize} type="button">
-              ↻ 重新编配
+              {t("arrangement.reharmonize")}
             </button>
           </div>
           <div className="chord-sequence">
@@ -113,15 +133,22 @@ export function ArrangementPanel({
                   chord.measureNumber === selectedMeasure ? "active" : "",
                   chord.locked ? "locked" : "",
                 ].join(" ")}
+                aria-label={`${t("music.measure", {
+                  number: chord.measureNumber,
+                })} · ${formatAccidentals(chord.symbol)} · ${Math.round(chord.confidence * 100)}%${
+                  chord.locked ? ` · ${t("arrangement.locked")}` : ""
+                }`}
                 disabled={!confirmed}
                 key={chord.measureNumber}
                 onClick={() => onSelectMeasure(chord.measureNumber)}
                 type="button"
               >
-                <small>M{chord.measureNumber}</small>
-                <strong>{chord.symbol}</strong>
+                <small>
+                  {t("music.measureShort", { number: chord.measureNumber })}
+                </small>
+                <strong>{formatAccidentals(chord.symbol)}</strong>
                 <span>{Math.round(chord.confidence * 100)}%</span>
-                {chord.locked ? <i>⌕</i> : null}
+                {chord.locked ? <i aria-hidden="true">⌕</i> : null}
               </button>
             ))}
           </div>
@@ -129,12 +156,16 @@ export function ArrangementPanel({
           {selectedChord ? (
             <div className="selected-chord-editor">
               <div className="chord-name">
-                <span>第 {selectedChord.measureNumber} 小节</span>
-                <strong>{selectedChord.symbol}</strong>
+                <span>
+                  {t("music.measure", {
+                    number: selectedChord.measureNumber,
+                  })}
+                </span>
+                <strong>{formatAccidentals(selectedChord.symbol)}</strong>
                 <small>{chordSolfege(selectedChord, song)}</small>
               </div>
               <label>
-                替换和弦
+                {t("arrangement.replaceChord")}
                 <select
                   disabled={!confirmed}
                   onChange={(event) =>
@@ -144,7 +175,8 @@ export function ArrangementPanel({
                 >
                   {palette.map((chord) => (
                     <option key={chord.symbol} value={chord.symbol}>
-                      {chord.symbol} · {chordSolfege(chord, song)}
+                      {formatAccidentals(chord.symbol)} ·{" "}
+                      {chordSolfege(chord, song)}
                     </option>
                   ))}
                 </select>
@@ -162,7 +194,7 @@ export function ArrangementPanel({
                   type="checkbox"
                 />
                 <span />
-                锁定本小节
+                {t("arrangement.lockMeasure")}
               </label>
             </div>
           ) : null}
@@ -171,14 +203,19 @@ export function ArrangementPanel({
 
       <footer className="arrangement-footer">
         <div>
-          <span className="hand-key right">R</span>
+          <span
+            aria-label={t("practice.rightHand")}
+            className="hand-key right"
+          >
+            {t("music.rightHandShort")}
+          </span>
           <p>
-            <strong>右手推荐指法</strong>
-            已计算连续手位；人工锁定的指法不会被覆盖。
+            <strong>{t("arrangement.rightFingering")}</strong>
+            {t("arrangement.rightFingeringHint")}
           </p>
         </div>
         <button disabled={!confirmed} onClick={onRecomputeFingering} type="button">
-          ↻ 重算未锁定指法
+          {t("arrangement.recompute")}
         </button>
       </footer>
     </section>

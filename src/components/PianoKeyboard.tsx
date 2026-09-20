@@ -1,5 +1,8 @@
+import { useLayoutEffect, useRef } from "react";
 import type { PerformanceEvent } from "../types";
 import { isBlackKey, midiToPitchName } from "../core/theory";
+import { useI18n } from "../i18n/I18nProvider";
+import { formatAccidentals } from "../i18n/messages";
 
 interface PianoKeyboardProps {
   activeEvents: PerformanceEvent[];
@@ -56,14 +59,19 @@ function HandMarker({
   hand: "right" | "left";
   event: PerformanceEvent | undefined;
 }) {
+  const { t } = useI18n();
   if (!event) return null;
   return (
     <div
       className={`hand-marker ${hand}`}
       style={{ left: `${keyCenterPercent(event.midi)}%` }}
     >
-      <span className="palm">{hand === "right" ? "右手" : "左手"}</span>
-      <span className="active-finger">手指 {event.finger}</span>
+      <span className="palm">
+        {t(hand === "right" ? "keyboard.rightHand" : "keyboard.leftHand")}
+      </span>
+      <span className="active-finger">
+        {t("keyboard.finger", { number: event.finger })}
+      </span>
       <i />
     </div>
   );
@@ -74,56 +82,92 @@ export function PianoKeyboard({
   rightEnabled,
   leftEnabled,
 }: PianoKeyboardProps) {
+  const { t } = useI18n();
+  const viewportRef = useRef<HTMLDivElement>(null);
   const rightEvent = activeEvents.find((event) => event.hand === "right");
   const leftEvent = activeEvents.find((event) => event.hand === "left");
+  const focusMidi =
+    rightEvent && leftEvent
+      ? Math.round((rightEvent.midi + leftEvent.midi) / 2)
+      : rightEvent?.midi ?? leftEvent?.midi;
+
+  useLayoutEffect(() => {
+    if (focusMidi === undefined) return;
+    const viewport = viewportRef.current;
+    const key = viewport?.querySelector<HTMLElement>(
+      `[data-midi="${focusMidi}"]`,
+    );
+    if (!viewport || !key) return;
+    const targetLeft =
+      key.offsetLeft - viewport.clientWidth / 2 + key.offsetWidth / 2;
+    viewport.scrollTo({
+      behavior: activeEvents.length > 0 ? "auto" : "smooth",
+      left: Math.max(0, targetLeft),
+    });
+  }, [focusMidi]);
 
   return (
     <div className="keyboard-stage">
-      <div className="hand-lane" aria-live="polite">
-        {rightEnabled ? <HandMarker hand="right" event={rightEvent} /> : null}
-        {leftEnabled ? <HandMarker hand="left" event={leftEvent} /> : null}
-      </div>
-      <div className="keyboard" aria-label="61 键电子琴动画">
-        <div className="white-keys">
-          {WHITE_KEYS.map((midi) => {
-            const active = activeForMidi(activeEvents, midi);
-            const hands = new Set(active.map((event) => event.hand));
-            return (
-              <div
-                className={[
-                  "piano-key white",
-                  hands.has("right") ? "right-active" : "",
-                  hands.has("left") ? "left-active" : "",
-                ].join(" ")}
-                key={midi}
-              >
-                {midi % 12 === 0 ? (
-                  <small>{midiToPitchName(midi)}</small>
-                ) : null}
-                {active[0] ? <strong>{active[0].finger}</strong> : null}
-              </div>
-            );
-          })}
+      <p className="keyboard-status" role="status">
+        {focusMidi === undefined
+          ? t("keyboard.waiting")
+          : `${t("keyboard.currentKey", {
+              pitch: formatAccidentals(midiToPitchName(focusMidi)),
+            })}${rightEvent?.cue ? ` · ${rightEvent.cue}` : ""}`}
+      </p>
+      <div className="keyboard-scroll" ref={viewportRef}>
+        <div className="keyboard-track">
+          <div className="hand-lane" aria-hidden="true">
+            {rightEnabled ? <HandMarker hand="right" event={rightEvent} /> : null}
+            {leftEnabled ? <HandMarker hand="left" event={leftEvent} /> : null}
+          </div>
+          <div className="keyboard" aria-hidden="true">
+            <div className="white-keys">
+              {WHITE_KEYS.map((midi) => {
+                const active = activeForMidi(activeEvents, midi);
+                const hands = new Set(active.map((event) => event.hand));
+                return (
+                  <div
+                    className={[
+                      "piano-key white",
+                      hands.has("right") ? "right-active" : "",
+                      hands.has("left") ? "left-active" : "",
+                    ].join(" ")}
+                    data-midi={midi}
+                    key={`${midi}-${active[0]?.id ?? "idle"}`}
+                  >
+                    {midi % 12 === 0 ? (
+                      <small>
+                        {formatAccidentals(midiToPitchName(midi))}
+                      </small>
+                    ) : null}
+                    {active[0] ? <strong>{active[0].finger}</strong> : null}
+                  </div>
+                );
+              })}
+            </div>
+            {KEY_POSITIONS.filter((position) => isBlackKey(position.midi)).map(
+              ({ midi, whiteIndex }) => {
+                const active = activeForMidi(activeEvents, midi);
+                const hands = new Set(active.map((event) => event.hand));
+                return (
+                  <div
+                    className={[
+                      "piano-key black",
+                      hands.has("right") ? "right-active" : "",
+                      hands.has("left") ? "left-active" : "",
+                    ].join(" ")}
+                    data-midi={midi}
+                    key={`${midi}-${active[0]?.id ?? "idle"}`}
+                    style={{ left: `${(whiteIndex / WHITE_COUNT) * 100}%` }}
+                  >
+                    {active[0] ? <strong>{active[0].finger}</strong> : null}
+                  </div>
+                );
+              },
+            )}
+          </div>
         </div>
-        {KEY_POSITIONS.filter((position) => isBlackKey(position.midi)).map(
-          ({ midi, whiteIndex }) => {
-            const active = activeForMidi(activeEvents, midi);
-            const hands = new Set(active.map((event) => event.hand));
-            return (
-              <div
-                className={[
-                  "piano-key black",
-                  hands.has("right") ? "right-active" : "",
-                  hands.has("left") ? "left-active" : "",
-                ].join(" ")}
-                key={midi}
-                style={{ left: `${(whiteIndex / WHITE_COUNT) * 100}%` }}
-              >
-                {active[0] ? <strong>{active[0].finger}</strong> : null}
-              </div>
-            );
-          },
-        )}
       </div>
     </div>
   );

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MeasureSpan, PerformanceEvent } from "../types";
 import { PianoSynth } from "../core/audio";
+import type { AudioPlaybackClock } from "../core/audio";
+import { useI18n } from "../i18n/I18nProvider";
 
-export type PlayerStatus = "idle" | "playing" | "paused" | "ended";
+export type PlayerStatus = "idle" | "starting" | "playing" | "paused" | "ended";
 
 export interface PracticePlayerOptions {
   events: PerformanceEvent[];
@@ -25,10 +27,14 @@ export interface PracticePlayer {
   pause: () => void;
   stop: () => void;
   seek: (beat: number) => void;
+  playFrom: (beat: number) => void;
+  restart: () => void;
+  prepare: () => Promise<void>;
   clearError: () => void;
 }
 
 export function usePracticePlayer(options: PracticePlayerOptions): PracticePlayer {
+  const { localizeError } = useI18n();
   const [status, setStatus] = useState<PlayerStatus>("idle");
   const [positionBeat, setPositionBeat] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +42,9 @@ export function usePracticePlayer(options: PracticePlayerOptions): PracticePlaye
   const frameRef = useRef<number | null>(null);
   const generationRef = useRef(0);
   const playingRef = useRef(false);
+  const startingRef = useRef(false);
   const positionRef = useRef(0);
+  const clockRef = useRef<AudioPlaybackClock | null>(null);
   const optionsRef = useRef(options);
   const startAtRef = useRef<(beat: number) => Promise<void>>(async () => undefined);
   optionsRef.current = options;
@@ -49,27 +57,31 @@ export function usePracticePlayer(options: PracticePlayerOptions): PracticePlaye
   const cancelCurrent = useCallback(() => {
     generationRef.current += 1;
     playingRef.current = false;
+    startingRef.current = false;
     if (frameRef.current !== null) {
       cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
     }
     synthRef.current?.stop();
+    clockRef.current = null;
   }, []);
 
   const startAt = useCallback(
     async (requestedBeat: number) => {
       const current = optionsRef.current;
       if (!current.enabled) {
-        setError("请先确认识别结果，再开始练习。");
+        setError("PLAYER_CONFIRM_REQUIRED");
         return;
       }
       if (!current.rightEnabled && !current.leftEnabled && !current.metronome) {
-        setError("右手、左手和节拍器均已关闭，没有可播放的声部。");
+        setError("PLAYER_NO_OUTPUT");
         return;
       }
 
       cancelCurrent();
       const generation = generationRef.current;
+      startingRef.current = true;
+      setStatus("starting");
       const loop = current.loopSpan;
       const lowerBound = loop?.startBeat ?? 0;
       const upperBound = loop?.endBeat ?? current.totalBeats;
@@ -77,6 +89,7 @@ export function usePracticePlayer(options: PracticePlayerOptions): PracticePlaye
         requestedBeat >= upperBound || requestedBeat < lowerBound
           ? lowerBound
           : requestedBeat;
+      setPosition(startBeat);
 
       if (!synthRef.current) synthRef.current = new PianoSynth();
 
@@ -95,14 +108,25 @@ export function usePracticePlayer(options: PracticePlayerOptions): PracticePlaye
         if (generation !== generationRef.current) return;
 
         setError(null);
-        setStatus("playing");
-        playingRef.current = true;
-        setPosition(startBeat);
+        clockRef.current = playbackClock;
         let lastPaint = 0;
-
         const tick = (now: number) => {
-          if (!playingRef.current || generation !== generationRef.current) return;
-          const nextPosition = playbackClock.getPositionBeat();
+          if (
+            (!playingRef.current && !startingRef.current) ||
+            generation !== generationRef.current
+          ) return;
+          const snapshot = playbackClock.sample();
+          const firstOutputFrame = startingRef.current;
+          if (firstOutputFrame) {
+            if (!snapshot.outputStarted) {
+              frameRef.current = requestAnimationFrame(tick);
+              return;
+            }
+            startingRef.current = false;
+            playingRef.current = true;
+            setStatus("playing");
+          }
+          const nextPosition = snapshot.positionBeat;
 
           if (nextPosition >= upperBound - 0.001) {
             setPosition(upperBound);
@@ -116,7 +140,7 @@ export function usePracticePlayer(options: PracticePlayerOptions): PracticePlaye
           }
 
           positionRef.current = nextPosition;
-          if (now - lastPaint >= 28) {
+          if (firstOutputFrame || now - lastPaint >= 28) {
             setPositionBeat(nextPosition);
             lastPaint = now;
           }
@@ -125,9 +149,10 @@ export function usePracticePlayer(options: PracticePlayerOptions): PracticePlaye
 
         frameRef.current = requestAnimationFrame(tick);
       } catch (cause) {
+        if (generation !== generationRef.current) return;
         cancelCurrent();
         const message =
-          cause instanceof Error ? cause.message : "浏览器音频初始化失败。";
+          cause instanceof Error ? cause.message : "AUDIO_INIT_FAILED";
         setError(message);
         setStatus("paused");
       }
@@ -137,8 +162,9 @@ export function usePracticePlayer(options: PracticePlayerOptions): PracticePlaye
   startAtRef.current = startAt;
 
   const pause = useCallback(() => {
-    if (!playingRef.current) return;
-    const currentPosition = positionRef.current;
+    if (!playingRef.current && !startingRef.current) return;
+    const currentPosition =
+      clockRef.current?.getPositionBeat() ?? positionRef.current;
     cancelCurrent();
     setPosition(currentPosition);
     setStatus("paused");
@@ -151,7 +177,7 @@ export function usePracticePlayer(options: PracticePlayerOptions): PracticePlaye
   }, [cancelCurrent, setPosition]);
 
   const toggle = useCallback(() => {
-    if (playingRef.current) {
+    if (playingRef.current || startingRef.current) {
       pause();
       return;
     }
@@ -167,19 +193,49 @@ export function usePracticePlayer(options: PracticePlayerOptions): PracticePlaye
     (beat: number) => {
       const current = optionsRef.current;
       const clamped = Math.max(0, Math.min(current.totalBeats, beat));
-      if (playingRef.current) {
+      if (clamped >= current.totalBeats - 0.0001) {
+        cancelCurrent();
+        setPosition(current.totalBeats);
+        setStatus("ended");
+        return;
+      }
+      if (playingRef.current || startingRef.current) {
         void startAtRef.current(clamped);
       } else {
         setPosition(clamped);
         setStatus(clamped >= current.totalBeats ? "ended" : "paused");
       }
     },
-    [setPosition],
+    [cancelCurrent, setPosition],
   );
 
+  const playFrom = useCallback((beat: number) => {
+    const current = optionsRef.current;
+    const clamped = Math.max(0, Math.min(current.totalBeats, beat));
+    void startAtRef.current(clamped);
+  }, []);
+
+  const restart = useCallback(() => {
+    void startAtRef.current(0);
+  }, []);
+
+  const prepare = useCallback(async () => {
+    if (!synthRef.current) synthRef.current = new PianoSynth();
+    try {
+      return await synthRef.current.prepare();
+    } catch (cause) {
+      const message =
+        cause instanceof Error ? cause.message : "AUDIO_INIT_FAILED";
+      setError(message);
+      throw cause;
+    }
+  }, []);
+
   useEffect(() => {
-    if (playingRef.current) {
-      void startAtRef.current(positionRef.current);
+    if (playingRef.current || startingRef.current) {
+      const currentPosition =
+        clockRef.current?.getPositionBeat() ?? positionRef.current;
+      void startAtRef.current(currentPosition);
     }
   }, [
     options.events,
@@ -204,11 +260,14 @@ export function usePracticePlayer(options: PracticePlayerOptions): PracticePlaye
   return {
     status,
     positionBeat,
-    error,
+    error: error ? localizeError(error) : null,
     toggle,
     pause,
     stop,
     seek,
+    playFrom,
+    restart,
+    prepare,
     clearError: () => setError(null),
   };
 }

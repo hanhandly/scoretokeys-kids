@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { join, parse, relative, resolve } from "node:path";
 import { build } from "esbuild";
 
@@ -13,6 +13,7 @@ function discoverTestFiles(directoryPath) {
       discovered.push(...discoverTestFiles(entryPath));
       continue;
     }
+
     if (entry.isFile() && entry.name.endsWith(".test.ts")) {
       discovered.push(entryPath);
     }
@@ -21,8 +22,23 @@ function discoverTestFiles(directoryPath) {
   return discovered;
 }
 
+function discoverServerTestFiles(directoryPath) {
+  const discovered = [];
+  const entries = readdirSync(directoryPath, { withFileTypes: true });
+  for (const entry of entries) {
+    const entryPath = join(directoryPath, entry.name);
+    if (entry.isDirectory()) {
+      discovered.push(...discoverServerTestFiles(entryPath));
+    } else if (entry.isFile() && entry.name.endsWith(".test.mjs")) {
+      discovered.push(entryPath);
+    }
+  }
+  return discovered;
+}
+
 const projectRoot = resolve(".");
 const sourceRoot = resolve("src");
+const serverRoot = resolve("server");
 const temporaryDirectory = mkdtempSync(join(projectRoot, ".tests-bundle-"));
 
 try {
@@ -52,10 +68,19 @@ try {
       return join(temporaryDirectory, parsed.dir, `${parsed.name}.js`);
     })
     .sort((left, right) => left.localeCompare(right));
+  const serverTests = existsSync(serverRoot)
+    ? discoverServerTestFiles(serverRoot).sort((left, right) =>
+        left.localeCompare(right),
+      )
+    : [];
 
-  const result = spawnSync(process.execPath, ["--test", ...bundledOutputs], {
+  const result = spawnSync(
+    process.execPath,
+    ["--test", ...bundledOutputs, ...serverTests],
+    {
     stdio: "inherit",
-  });
+    },
+  );
   process.exitCode = result.status ?? 1;
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });

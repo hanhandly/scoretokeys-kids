@@ -26,15 +26,16 @@ describe("A4 source-aware layout", () => {
     );
   });
 
-  it("keeps all seven source lines of the jianpu fixture on one A4 page", () => {
+  it("paginates all source lines without splitting or reordering them", () => {
     const song = SAMPLE_SONGS[1];
     const plan = createA4LayoutPlan(song, {
       mode: "source-faithful",
       sourceHint: SOURCE_LAYOUT_HINTS[song.id],
     });
 
-    assert.equal(plan.pages.length, 1);
-    assert.equal(plan.pages[0].systems.length, 7);
+    assert.equal(plan.pages.length, 2);
+    assert.equal(plan.pages[0].systems.length, 5);
+    assert.equal(plan.pages[1].systems.length, 2);
     assert.deepEqual(
       plan.pages[0].systems[0].measures.map(
         (measure) => measure.measureNumber,
@@ -42,7 +43,7 @@ describe("A4 source-aware layout", () => {
       [1, 2, 3, 4, 5],
     );
     assert.deepEqual(
-      plan.pages[0].systems.at(-1)?.measures.map(
+      plan.pages[1].systems.at(-1)?.measures.map(
         (measure) => measure.measureNumber,
       ),
       [31, 32, 33, 34, 35],

@@ -195,6 +195,14 @@ export function harmonize(
   overrides: ChordOverrides = {},
 ): ChordAssignment[] {
   const palette = buildChordPalette(song.key);
+  const paletteSymbols = new Set(palette.map((chord) => chord.symbol));
+  for (const [measureNumber, override] of Object.entries(overrides)) {
+    if (!paletteSymbols.has(override.symbol)) {
+      throw new Error(
+        `第 ${measureNumber} 小节的锁定和弦 ${override.symbol} 不属于当前调性。`,
+      );
+    }
+  }
   const measures = song.measures.filter((measure) => measure.number > 0);
   if (measures.length === 0) return [];
 
@@ -273,8 +281,8 @@ export function buildPerformanceTimeline(
   const measureByNumber = new Map(
     song.measures.map((measure) => [measure.number, measure]),
   );
-  const melody: PerformanceEvent[] = song.measures.flatMap((measure) => {
-    const span = spanByMeasure.get(measure.number)!;
+  const melody: PerformanceEvent[] = song.measures.flatMap((measure, index) => {
+    const span = spans[index];
     return measure.events.flatMap((event) =>
       event.midi === null
         ? []
@@ -290,8 +298,20 @@ export function buildPerformanceTimeline(
               voice: "melody" as const,
               velocity: 0.78,
               measureNumber: measure.number,
+              cue: event.lyric,
+              tieToNext: event.tieToNext,
             },
           ],
+    );
+  });
+  melody.forEach((event, index) => {
+    const previous = melody[index - 1];
+    event.tieFromPrevious = Boolean(
+      previous?.tieToNext &&
+        previous.midi === event.midi &&
+        Math.abs(
+          previous.startBeat + previous.durationBeats - event.startBeat,
+        ) < 0.0001,
     );
   });
 
@@ -300,17 +320,18 @@ export function buildPerformanceTimeline(
     if (!span) return [];
     const measureLength = span.endBeat - span.startBeat;
     const measure = measureByNumber.get(chord.measureNumber);
-    const soundingLength = Math.min(
-      measureLength,
-      measure?.events.reduce(
-        (end, event) =>
-          event.midi === null
-            ? end
-            : Math.max(end, event.offsetBeats + event.durationBeats),
-        0,
-      ) ?? measureLength,
+    if (!measure) return [];
+    const lastSoundingEnd = measure.events.reduce(
+      (end, event) =>
+        event.midi === null
+          ? end
+          : Math.max(end, event.offsetBeats + event.durationBeats),
+      0,
     );
-    if (soundingLength <= 0) return [];
+    const accompanimentLength =
+      measure.phraseEnd && lastSoundingEnd > 0
+        ? Math.min(measureLength, lastSoundingEnd)
+        : measureLength;
 
     const root = bassRootPitch(chord);
     const fifth = root + 7;
@@ -334,36 +355,42 @@ export function buildPerformanceTimeline(
     });
 
     if (mode === "root") {
-      return [makeEvent(root, 0, soundingLength, 0, [root])];
+      return [makeEvent(root, 0, accompanimentLength, 0, [root])];
     }
 
     if (mode === "root-fifth") {
-      if (soundingLength < measureLength - 0.001) {
-        return [makeEvent(root, 0, soundingLength, 0, [root])];
-      }
       const half = measureLength / 2;
       const pitches = [root, fifth];
-      return [
-        makeEvent(root, 0, half, 0, pitches),
-        makeEvent(fifth, half, half, 1, pitches),
+      const events = [
+        makeEvent(root, 0, Math.min(half, accompanimentLength), 0, pitches),
       ];
+      if (accompanimentLength > half) {
+        events.push(
+          makeEvent(fifth, half, accompanimentLength - half, 1, pitches),
+        );
+      }
+      return events;
     }
 
     if (mode === "block") {
       return chord.pitches.map((pitch, index) =>
-        makeEvent(pitch, 0, soundingLength, index),
+        makeEvent(pitch, 0, accompanimentLength, index),
       );
     }
 
     const step = 0.5;
     const pattern = [chord.pitches[0], chord.pitches[1], chord.pitches[2], chord.pitches[1]];
     const events: PerformanceEvent[] = [];
-    for (let offset = 0, index = 0; offset < soundingLength; offset += step, index += 1) {
+    for (
+      let offset = 0, index = 0;
+      offset < accompanimentLength;
+      offset += step, index += 1
+    ) {
       events.push(
         makeEvent(
           pattern[index % pattern.length],
           offset,
-          Math.min(step, soundingLength - offset),
+          Math.min(step, accompanimentLength - offset),
           index,
         ),
       );
